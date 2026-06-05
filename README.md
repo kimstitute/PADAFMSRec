@@ -1,349 +1,472 @@
-![RecBole Logo](asset/logo.png)
+# PADAFMSRec
 
---------------------------------------------------------------------------------
+RecBole 1.2.1을 기반으로 한 멀티모달 순차 추천 연구용 포크입니다.
 
-# RecBole (伯乐)
+이 저장소의 목적은 Amazon Reviews 기반 데이터셋에서 동일한 RecBole 데이터 분할과 동일한 전처리 산출물을 사용해 다음 계열의 모델을 비교하는 것입니다.
 
-*“世有伯乐，然后有千里马。千里马常有，而伯乐不常有。”——韩愈《马说》*
+- ID-only sequential recommendation baseline
+- structured feature 기반 sequential recommendation baseline
+- text/image dense cache를 사용하는 multimodal sequential recommendation baseline
+- PADAFRec 및 관련 비교군
 
-[![PyPi Latest Release](https://img.shields.io/pypi/v/recbole)](https://pypi.org/project/recbole/)
-[![Conda Latest Release](https://anaconda.org/aibox/recbole/badges/version.svg)](https://anaconda.org/aibox/recbole)
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
-[![arXiv](https://img.shields.io/badge/arXiv-RecBole-%23B21B1B)](https://arxiv.org/abs/2011.01731)
+원본 프레임워크는 [RUCAIBox/RecBole](https://github.com/RUCAIBox/RecBole)입니다. 본 저장소는 RecBole의 전체 프레임워크를 유지하면서 연구 모델과 실험용 데이터 로딩 계약을 추가한 포크입니다.
 
+---
 
-[HomePage] | [Docs] | [Datasets] | [Paper] | [Blogs] | [Models] | [中文版]
+## 1. 원본 RecBole 대비 수정 사항
 
-[HomePage]: https://recbole.io/
-[Docs]: https://recbole.io/docs/
-[Datasets]: https://github.com/RUCAIBox/RecDatasets
-[Paper]: https://arxiv.org/abs/2011.01731
-[Blogs]: https://blog.csdn.net/Turinger_2000/article/details/111182852
-[Models]: https://github.com/RUCAIBox/RecBole2.0/blob/main/model_list.md
-[中文版]: README_CN.md
+### 1.1 추가한 모델
 
-RecBole is developed based on Python and PyTorch for reproducing and developing recommendation algorithms in a unified,
-comprehensive and efficient framework for research purpose.
-Our library includes 94 recommendation algorithms, covering four major categories:
+| 모델명 | 파일 | 입력 모달리티 | 핵심 목적 |
+| --- | --- | --- | --- |
+| `PADAFRec` | `recbole/model/sequential_recommender/padafrec.py` | `category + brand + text + image` | ID representation을 value path로 유지하고, side feature를 attention score 조절에 사용하는 PADAF 계열 모델 |
+| `IRIS` | `recbole/model/sequential_recommender/iris.py` | `category + brand + text + image` | IRIS 구조를 RecBole 1.2.1 및 PADAF dense cache 구조에 맞게 포팅한 비교군 |
+| `SASRecD` | `recbole/model/sequential_recommender/sasrecd.py` | `category`, `category + brand`, 또는 `category + brand + text + image` | DIF-SR 스타일 score-level feature fusion 비교군 |
+| `SASRecFDense` | `recbole/model/sequential_recommender/sasrecfdense.py` | `category + brand + text + image` | 모든 모달리티를 Transformer 입력 전에 concat 후 linear projection하는 early-fusion baseline |
+| `GMUSASRecFDense` | `recbole/model/sequential_recommender/gmusasrecfdense.py` | `category + brand + text + image` | 모든 모달리티를 GMU 방식으로 early fusion하는 baseline |
+| `SASRec` | RecBole 원본 | ID only | side feature 없이 item id sequence만 사용하는 기본 baseline |
 
-+ General Recommendation
-+ Sequential Recommendation
-+ Context-aware Recommendation
-+ Knowledge-based Recommendation
+### 1.2 추가한 layer
 
-We design a unified and flexible data file format, and provide the support for 44 benchmark recommendation datasets.
-A user can apply the provided script to process the original data copy, or simply download the processed datasets
-by our team.
+| 파일 | 내용 |
+| --- | --- |
+| `recbole/model/padaf_layers.py` | PADAFRec용 decoupled attention layer |
+| `recbole/model/iris_layers.py` | IRIS 포팅용 attention/layer 구현 |
+| `recbole/model/dif_layers.py` | DIF-SR/SASRecD용 feature score fusion layer |
 
+### 1.3 추가한 모델 설정 파일
 
-<p align="center">
-  <img src="asset/framework.png" alt="RecBole v0.1 architecture" width="600">
-  <br>
-  <b>Figure</b>: RecBole Overall Architecture
-</p>
+`recbole/properties/model/` 아래에 다음 설정 파일을 추가했습니다.
 
-In order to support the study of recent advances in recommender systems, we construct an extended recommendation library [RecBole2.0](https://github.com/RUCAIBox/RecBole2.0) consisting of 8 packages for up-to-date topics and architectures (e.g., debiased, fairness and GNNs). 
+- `PADAFRec.yaml`
+- `IRIS.yaml`
+- `SASRecD.yaml`
+- `SASRecFDense.yaml`
+- `GMUSASRecFDense.yaml`
 
-## Feature
-+ **General and extensible data structure.** We design general and extensible data structures to unify the formatting and
-usage of various recommendation datasets.
+원본 RecBole의 `SASRec.yaml`도 그대로 사용할 수 있습니다.
 
-+ **Comprehensive benchmark models and datasets.** We implement 94 commonly used recommendation algorithms, and provide
-the formatted copies of 44 recommendation datasets.
+### 1.4 dense cache 로딩 계약 추가
 
-+ **Efficient GPU-accelerated execution.** We optimize the efficiency of our library with a number of improved techniques
-oriented to the GPU environment.
+`PADAFRec`, `IRIS`, `SASRecD(full)`, `SASRecFDense`, `GMUSASRecFDense`는 전처리된 dense feature cache를 사용할 수 있습니다.
 
-+ **Extensive and standard evaluation protocols.** We support a series of widely adopted evaluation protocols or settings
-for testing and comparing recommendation algorithms.
+현재 dense cache 계약은 다음과 같습니다.
 
+- `image_features.npy`: shape `(n_items + 1, 2048)`
+- `text_features.npy`: shape `(n_items + 1, 768)`
+- row `0`은 padding item용 zero vector
+- row index는 RecBole remapping 이후의 `item_id`와 일치해야 함
+- 즉, `.item` 파일의 item 수가 `n_items`라면 dense matrix row 수는 반드시 `n_items + 1`이어야 함
 
-## RecBole News
-![new](/asset/new.gif) **02/23/2025**: We release RecBole [v1.2.1](https://github.com/RUCAIBox/RecBole/releases/tag/v1.2.1).
+모델 내부에서는 dense matrix row 수가 `dataset.item_num`과 맞는지 검사합니다. 단, row 순서의 의미적 동일성은 전처리 단계에서 보장해야 합니다.
 
-![new](/asset/new.gif) **11/01/2023**: We release RecBole [v1.2.0](https://github.com/RUCAIBox/RecBole/releases/tag/v1.2.0).
+### 1.5 추가한 테스트
 
-**11/06/2022**: We release [the optimal hyperparameters of the model and their tuning ranges](https://recbole.io/hyperparameters/index.html).
+`tests/model/` 아래에 모델 등록, forward/loss, dense cache row count, fusion layer 동작을 검증하는 테스트를 추가했습니다.
 
-**10/05/2022**: We release RecBole [v1.1.1](https://github.com/RUCAIBox/RecBole/releases/tag/v1.1.1).
+대표 테스트 파일:
 
-**06/28/2022**: We release [**RecBole2.0**](https://github.com/RUCAIBox/RecBole2.0) with **8 packages** consisting of **65 newly implement models**. 
+- `test_padaf_layers.py`
+- `test_padafrec_registration.py`
+- `test_iris_layers.py`
+- `test_iris_registration.py`
+- `test_difsr_layers.py`
+- `test_sasrecd_registration.py`
+- `test_sasrecfdense_registration.py`
+- `test_gmusasrecfdense_registration.py`
 
-**02/25/2022**: We release RecBole [v1.0.1](https://github.com/RUCAIBox/RecBole/releases/tag/v1.0.1).
+---
 
-**09/17/2021**: We release RecBole [v1.0.0](https://github.com/RUCAIBox/RecBole/releases/tag/v1.0.0).
+## 2. 데이터셋 형식
 
-**03/22/2021**: We release RecBole [v0.2.1](https://github.com/RUCAIBox/RecBole/releases/tag/v0.2.1).
+RecBole sequential recommendation 형식을 사용합니다.
 
-**01/15/2021**: We release RecBole [v0.2.0](https://github.com/RUCAIBox/RecBole/releases/tag/v0.2.0).
+예를 들어 데이터셋 이름이 `Beauty_and_Personal_Care_PADAF`라면 다음 구조를 기대합니다.
 
-**12/10/2020**: 我们发布了[RecBole小白入门系列中文博客（持续更新中）](https://blog.csdn.net/Turinger_2000/article/details/111182852) 。
-
-**12/06/2020**: We release RecBole [v0.1.2](https://github.com/RUCAIBox/RecBole/releases/tag/v0.1.2).
-
-**11/29/2020**: We constructed preliminary experiments to test the time and memory cost on three
-different-sized datasets and provided the [test result](https://github.com/RUCAIBox/RecBole#time-and-memory-costs)
-for reference.
-
-**11/03/2020**: We release the first version of RecBole **v0.1.1**.
-
-### Latest Update for SIGIR 2023 Submission
-
-To better meet the user requirements and contribute to the research community, we present a significant update of RecBole in the latest version, making it more user-friendly and easy-to-use as a comprehensive benchmark library for recommendation. We summarize these updates in "**Towards a More User-Friendly and Easy-to-Use Benchmark Library for Recommender Systems**" and submit the paper to **SIGIR 2023**. The main contribution in this update is introduced below.
-
-Our extensions are made in three major aspects, namely the models/datasets, the framework, and the configurations. Furthermore, we provide more comprehensive documentation and well-organized FAQ for the usage of our library, which largely improves the user experience. More specifically, the highlights of this update are summarized as: 
-
-1. We introduce more operations and settings to help benchmarking the recommendation domain.
-
-2. We improve the user friendliness of our library by providing more detailed documentation and well-organized frequently asked questions. 
-3. We point out several development guidelines for the open-source library developers. 
-
-These extensions make it much easier to reproduce the benchmark results and stay up-to-date with the recent advances on recommender systems. The datailed comparison between this update and previous versions is listed below.
-
-|          Aspect           |            RecBole 1.0             |          RecBole 2.0           |                   This update                    |
-| :-----------------------: | :--------------------------------: | :----------------------------: | :----------------------------------------------: |
-|   Recommendation tasks    |            4 categories            |    3 topics and 5 packages     |                   4 categories                   |
-|    Models and datasets    |     73 models and 28 datasets      |  65 models and 8 new datasets  |            94 models and 43 datasets             |
-|      Data structure       | Implemented Dataset and Dataloader |         Task-oriented          |  Compatible data module inherited from PyTorch   |
-|    Continuous features    |          Field embedding           |        Field embedding         |        Field embedding and discretization        |
-| GPU-accelerated execution |       Single-GPU utilization       |     Single-GPU utilization     |      Multi-GPU and mixed precision training      |
-|  Hyper-parameter tuning   |       Serial gradient search       |     Serial gradient search     | Three search methods in both serial and parallel |
-|     Significance test     |                 -                  |               -                |               Available interface                |
-|     Benchmark results     |                 -                  | Partially public (GNN and CDR) |      Benchmark configurations on 94 models       |
-|      Friendly usage       |           Documentation            |         Documentation          |       Improved documentation and FAQ page        |
-
-
-## Installation
-RecBole works with the following operating systems:
-
-* Linux
-* Windows 10
-* macOS X
-
-RecBole requires Python version 3.7 or later.
-
-RecBole requires torch version 1.7.0 or later. If you want to use RecBole with GPU,
-please ensure that CUDA or cudatoolkit version is 9.2 or later.
-This requires NVIDIA driver version >= 396.26 (for Linux) or >= 397.44 (for Windows10).
-
-### Install from conda
-
-```bash
-conda install -c aibox recbole
+```text
+dataset/
+└── Beauty_and_Personal_Care_PADAF/
+    ├── Beauty_and_Personal_Care_PADAF.inter
+    ├── Beauty_and_Personal_Care_PADAF.item
+    ├── u_id_mapping.csv
+    ├── i_id_mapping.csv
+    └── padaf/
+        ├── text_features.npy
+        └── image_features.npy
 ```
 
-### Install from pip
+### 2.1 `.inter` 필수 컬럼
 
-```bash
-pip install recbole
+```text
+user_id:token
+item_id:token
+rating:float
+timestamp:float
 ```
 
-### Install from source
+### 2.2 `.item` 권장 컬럼
+
+멀티모달/side-feature 모델은 다음 컬럼을 사용합니다.
+
+```text
+item_id:token
+category:token
+brand:token
+text_cache_key:token
+image_cache_key:token
+text_available:float
+image_available:float
+```
+
+`SASRec` 같은 ID-only baseline은 `.item`을 로드하지 않도록 설정할 수 있습니다.
+
+---
+
+## 3. 설치
+
+Python 3.11.9 환경에서 주로 검증했습니다.
+
 ```bash
-git clone https://github.com/RUCAIBox/RecBole.git && cd RecBole
+git clone https://github.com/kimstitute/PADAFMSRec.git
+cd PADAFMSRec
 pip install -e . --verbose
 ```
 
-## Quick-Start
-With the source code, you can use the provided script for initial usage of our library:
+GPU 환경에서는 사용 중인 CUDA/PyTorch 조합에 맞게 PyTorch를 먼저 설치하는 것을 권장합니다.
+
+---
+
+## 4. 실행 방법
+
+### 4.1 공통 실행 명령
 
 ```bash
-python run_recbole.py
+python run_recbole.py \
+  --model PADAFRec \
+  --dataset Beauty_and_Personal_Care_PADAF \
+  --config_files /path/to/PADAFRec_Beauty_and_Personal_Care_PADAF.yaml
 ```
 
-This script will run the BPR model on the ml-100k dataset.
+`--dataset` 값은 데이터셋 폴더명 및 `.inter`, `.item` prefix와 일치해야 합니다.
 
-Typically, this example takes less than one minute. We will obtain some output like:
+예:
 
-```
-INFO ml-100k
-The number of users: 944
-Average actions of users: 106.04453870625663
-The number of items: 1683
-Average actions of items: 59.45303210463734
-The number of inters: 100000
-The sparsity of the dataset: 93.70575143257098%
-INFO Evaluation Settings:
-Group by user_id
-Ordering: {'strategy': 'shuffle'}
-Splitting: {'strategy': 'by_ratio', 'ratios': [0.8, 0.1, 0.1]}
-Negative Sampling: {'strategy': 'full', 'distribution': 'uniform'}
-INFO BPRMF(
-    (user_embedding): Embedding(944, 64)
-    (item_embedding): Embedding(1683, 64)
-    (loss): BPRLoss()
-)
-Trainable parameters: 168128
-INFO epoch 0 training [time: 0.27s, train loss: 27.7231]
-INFO epoch 0 evaluating [time: 0.12s, valid_score: 0.021900]
-INFO valid result:
-recall@10: 0.0073  mrr@10: 0.0219  ndcg@10: 0.0093  hit@10: 0.0795  precision@10: 0.0088
-...
-INFO epoch 63 training [time: 0.19s, train loss: 4.7660]
-INFO epoch 63 evaluating [time: 0.08s, valid_score: 0.394500]
-INFO valid result:
-recall@10: 0.2156  mrr@10: 0.3945  ndcg@10: 0.2332  hit@10: 0.7593  precision@10: 0.1591
-INFO Finished training, best eval result in epoch 52
-INFO Loading model structure and parameters from saved/***.pth
-INFO best valid result:
-recall@10: 0.2169  mrr@10: 0.4005  ndcg@10: 0.235  hit@10: 0.7582  precision@10: 0.1598
-INFO test result:
-recall@10: 0.2368  mrr@10: 0.4519  ndcg@10: 0.2768  hit@10: 0.7614  precision@10: 0.1901
+```text
+dataset/Beauty_and_Personal_Care_PADAF/Beauty_and_Personal_Care_PADAF.inter
+dataset/Beauty_and_Personal_Care_PADAF/Beauty_and_Personal_Care_PADAF.item
 ```
 
-If you want to change the parameters, such as ``learning_rate``, ``embedding_size``, just set the additional command
-parameters as you need:
+이면 실행 시:
 
 ```bash
-python run_recbole.py --learning_rate=0.0001 --embedding_size=128
+--dataset Beauty_and_Personal_Care_PADAF
 ```
 
-If you want to change the models, just run the script by setting additional command parameters:
+을 사용합니다.
+
+### 4.2 ID-only SASRec 실행 예시
+
+side feature와 dense cache를 사용하지 않는 일반 SASRec baseline입니다.
+
+```yaml
+data_path: /content/padaf_workspace/dataset
+USER_ID_FIELD: user_id
+ITEM_ID_FIELD: item_id
+RATING_FIELD: rating
+TIME_FIELD: timestamp
+load_col:
+  inter: [user_id, item_id, rating, timestamp]
+MAX_ITEM_LIST_LENGTH: 50
+loss_type: CE
+n_layers: 2
+n_heads: 2
+hidden_size: 64
+inner_size: 256
+hidden_dropout_prob: 0.5
+attn_dropout_prob: 0.5
+train_batch_size: 1024
+eval_batch_size: 256
+epochs: 10
+stopping_step: 5
+eval_args:
+  split:
+    LS: valid_and_test
+  order: TO
+  group_by: user
+  mode: full
+metrics: [Recall, MRR, NDCG, Hit, Precision]
+topk: [5, 10, 20]
+valid_metric: NDCG@10
+```
+
+실행:
 
 ```bash
-python run_recbole.py --model=[model_name]
+python run_recbole.py \
+  --model SASRec \
+  --dataset Beauty_and_Personal_Care_PADAF \
+  --config_files /path/to/SASRec_Beauty_and_Personal_Care_PADAF.yaml
 ```
 
-### Auto-tuning Hyperparameter 
-Open `RecBole/hyper.test` and set several hyperparameters to auto-searching in parameter list. The following has two ways to search best hyperparameter:
-* **loguniform**: indicates that the parameters obey the uniform distribution, randomly taking values from e^{-8} to e^{0}.
-* **choice**: indicates that the parameter takes discrete values from the setting list.
+### 4.3 PADAFRec 실행 예시
 
-Here is an example for `hyper.test`: 
-```
-learning_rate loguniform -8, 0
-embedding_size choice [64, 96 , 128]
-train_batch_size choice [512, 1024, 2048]
-mlp_hidden_size choice ['[64, 64, 64]','[128, 128]']
-```
-Set training command parameters as you need to run:
-```
-python run_hyper.py --model=[model_name] --dataset=[data_name] --config_files=xxxx.yaml --params_file=hyper.test
-e.g.
-python run_hyper.py --model=BPR --dataset=ml-100k --config_files=test.yaml --params_file=hyper.test
-```
-Note that `--config_files=test.yaml` is optional, if you don't have any customize config settings, this parameter can be empty.
-
-This processing maybe take a long time to output best hyperparameter and result:
-```
-running parameters:                                                                                                                    
-{'embedding_size': 64, 'learning_rate': 0.005947474154838498, 'mlp_hidden_size': '[64,64,64]', 'train_batch_size': 512}                
-  0%|                                                                                           | 0/18 [00:00<?, ?trial/s, best loss=?]
+```yaml
+data_path: /content/padaf_workspace/dataset
+load_col:
+  inter: [user_id, item_id, rating, timestamp]
+  item: [item_id, category, brand, text_cache_key, image_cache_key, text_available, image_available]
+selected_features: [category, brand, text, image]
+structured_features: [category, brand]
+dense_features: [text, image]
+dense_feature_paths:
+  text: /content/padaf_workspace/dataset/Beauty_and_Personal_Care_PADAF/padaf/text_features.npy
+  image: /content/padaf_workspace/dataset/Beauty_and_Personal_Care_PADAF/padaf/image_features.npy
+use_category_aux: true
+use_brand_aux: true
+category_aux_field: category
+brand_aux_field: brand
+lambda_cat: 0.1
+lambda_brand: 0.05
 ```
 
-More information about parameter tuning can be found in our [docs](https://recbole.io/docs/user_guide/usage/parameter_tuning.html).
+실행:
 
-
-## Time and Memory Costs
-We constructed preliminary experiments to test the time and memory cost on three different-sized datasets 
-(small, medium and large). For detailed information, you can click the following links.
-
-* [General recommendation models](asset/time_test_result/General_recommendation.md)
-* [Sequential recommendation models](asset/time_test_result/Sequential_recommendation.md)
-* [Context-aware recommendation models](asset/time_test_result/Context-aware_recommendation.md)
-* [Knowledge-based recommendation models](asset/time_test_result/Knowledge-based_recommendation.md)
-
-NOTE: Our test results only gave the approximate time and memory cost of our implementations in the RecBole library
-(based on our machine server).  Any feedback or suggestions about the implementations and test are welcome. 
-We will keep improving our implementations, and update these test results.
-
-
-## RecBole Major Releases
-| Releases | Date       |
-|----------|------------|
-| v1.2.1   | 02/23/2025 |
-| v1.2.0   | 11/01/2023 |
-| v1.1.1   | 10/05/2022 |
-| v1.0.0   | 09/17/2021 |
-| v0.2.0   | 01/15/2021 |
-| v0.1.1   | 11/03/2020 |
-
-
-## Open Source Contributions
-As a one-stop framework from data processing, model development, algorithm training to scientific evaluation, RecBole has a total of **11** related GitHub projects including 
-- two versions of RecBole ([RecBole 1.0](https://github.com/RUCAIBox/RecBole) and [RecBole 2.0](https://github.com/RUCAIBox/RecBole2.0));
-- 8 benchmarking packages ([RecBole-MetaRec](https://github.com/nuster1128/RecBole-MetaRec), [RecBole-DA](https://github.com/RUCAIBox/RecBole-DA), [RecBole-Debias](https://github.com/JingsenZhang/RecBole-Debias), [RecBole-FairRec](https://github.com/TangJiakai/RecBole-FairRec), [RecBole-CDR](https://github.com/RUCAIBox/RecBole-CDR), [RecBole-TRM](https://github.com/RUCAIBox/RecBole-TRM), [RecBole-GNN](https://github.com/RUCAIBox/RecBole-GNN) and [RecBole-PJF](https://github.com/RUCAIBox/RecBole-PJF));
-- dataset repository (<a href="https://github.com/RUCAIBox/RecSysDatasets">RecSysDatasets</a>).
-
-In the following table, we summarize the open source contributions of GitHub projects based on RecBole.
-
-| **Projects**                                                 | **Stars**                                                    | **Forks**                                                    | **Issues**                                                   | **Pull requests**                                            |
-| :----------------------------------------------------------- | :----------------------------------------------------------- | :----------------------------------------------------------- | :----------------------------------------------------------- | :----------------------------------------------------------- |
-| [**RecBole**](https://github.com/RUCAIBox/RecBole)           | [![Stars](https://img.shields.io/github/stars/RUCAIBox/RecBole?style=social&logo=ReverbNation&logoColor=yellow)](https://github.com/RUCAIBox/RecBole/stargazers) | [![Forks](https://img.shields.io/github/forks/RUCAIBox/RecBole?style=social&logo=github)](https://github.com/RUCAIBox/RecBole/network/members) | [![Issues](https://img.shields.io/github/issues-closed/RUCAIBox/RecBole?style=social&logo=git)](https://github.com/RUCAIBox/RecBole/issues) | [![Pull requests](https://img.shields.io/github/issues-pr-closed/RUCAIBox/RecBole?style=social&logo=githubactions)](https://github.com/RUCAIBox/RecBole/pulls) |
-| [**RecBole2.0**](https://github.com/RUCAIBox/RecBole2.0)     | [![Stars](https://img.shields.io/github/stars/RUCAIBox/RecBole2.0?style=social&logo=ReverbNation&logoColor=yellow)](https://github.com/RUCAIBox/RecBole2.0/stargazers) | [![Forks](https://img.shields.io/github/forks/RUCAIBox/RecBole2.0?style=social&logo=github)](https://github.com/RUCAIBox/RecBole2.0/network/members) | [![Issues](https://img.shields.io/github/issues-closed/RUCAIBox/RecBole2.0?style=social&logo=git)](https://github.com/RUCAIBox/RecBole2.0/issues) | [![Pull requests](https://img.shields.io/github/issues-pr-closed/RUCAIBox/RecBole2.0?style=social&logo=githubactions)](https://github.com/RUCAIBox/RecBole2.0/pulls) |
-| [**RecBole-DA**](https://github.com/RUCAIBox/RecBole-DA)     | [![Stars](https://img.shields.io/github/stars/RUCAIBox/RecBole-DA?style=social&logo=ReverbNation&logoColor=yellow)](https://github.com/RUCAIBox/RecBole-DA/stargazers) | [![Forks](https://img.shields.io/github/forks/RUCAIBox/RecBole-DA?style=social&logo=github)](https://github.com/RUCAIBox/RecBole-DA/network/members) | [![Issues](https://img.shields.io/github/issues-closed/RUCAIBox/RecBole-DA?style=social&logo=git)](https://github.com/RUCAIBox/RecBole-DA/issues) | [![Pull requests](https://img.shields.io/github/issues-pr-closed/RUCAIBox/RecBole-DA?style=social&logo=githubactions)](https://github.com/RUCAIBox/RecBole-DA/pulls) |
-| [**RecBole-MetaRec**](https://github.com/nuster1128/RecBole-MetaRec) | [![Stars](https://img.shields.io/github/stars/nuster1128/RecBole-MetaRec?style=social&logo=ReverbNation&logoColor=yellow)](https://github.com/nuster1128/RecBole-MetaRec/stargazers) | [![Forks](https://img.shields.io/github/forks/nuster1128/RecBole-MetaRec?style=social&logo=github)](https://github.com/nuster1128/RecBole-MetaRec/network/members) | [![Issues](https://img.shields.io/github/issues-closed/nuster1128/RecBole-MetaRec?style=social&logo=git)](https://github.com/nuster1128/RecBole-MetaRec/issues) | [![Pull requests](https://img.shields.io/github/issues-pr-closed/nuster1128/RecBole-MetaRec?style=social&logo=githubactions)](https://github.com/nuster1128/RecBole-MetaRec/pulls) |
-| [**RecBole-Debias**](https://github.com/JingsenZhang/RecBole-Debias) | [![Stars](https://img.shields.io/github/stars/JingsenZhang/RecBole-Debias?style=social&logo=ReverbNation&logoColor=yellow)](https://github.com/JingsenZhang/RecBole-Debias/stargazers) | [![Forks](https://img.shields.io/github/forks/JingsenZhang/RecBole-Debias?style=social&logo=github)](https://github.com/JingsenZhang/RecBole-Debias/network/members) | [![Issues](https://img.shields.io/github/issues-closed/JingsenZhang/RecBole-Debias?style=social&logo=git)](https://github.com/JingsenZhang/RecBole-Debias/issues) | [![Pull requests](https://img.shields.io/github/issues-pr-closed/JingsenZhang/RecBole-Debias?style=social&logo=githubactions)](https://github.com/JingsenZhang/RecBole-Debias/pulls) |
-| [**RecBole-FairRec**](https://github.com/TangJiakai/RecBole-FairRec) | [![Stars](https://img.shields.io/github/stars/TangJiakai/RecBole-FairRec?style=social&logo=ReverbNation&logoColor=yellow)](https://github.com/TangJiakai/RecBole-FairRec/stargazers) | [![Forks](https://img.shields.io/github/forks/TangJiakai/RecBole-FairRec?style=social&logo=github)](https://github.com/TangJiakai/RecBole-FairRec/network/members) | [![Issues](https://img.shields.io/github/issues-closed/TangJiakai/RecBole-FairRec?style=social&logo=git)](https://github.com/TangJiakai/RecBole-FairRec/issues) | [![Pull requests](https://img.shields.io/github/issues-pr-closed/TangJiakai/RecBole-FairRec?style=social&logo=githubactions)](https://github.com/TangJiakai/RecBole-FairRec/pulls) |
-| [**RecBole-CDR**](https://github.com/RUCAIBox/RecBole-CDR)   | [![Stars](https://img.shields.io/github/stars/RUCAIBox/RecBole-CDR?style=social&logo=ReverbNation&logoColor=yellow)](https://github.com/RUCAIBox/RecBole-CDR/stargazers) | [![Forks](https://img.shields.io/github/forks/RUCAIBox/RecBole-CDR?style=social&logo=github)](https://github.com/RUCAIBox/RecBole-CDR/network/members) | [![Issues](https://img.shields.io/github/issues-closed/RUCAIBox/RecBole-CDR?style=social&logo=git)](https://github.com/RUCAIBox/RecBole-CDR/issues) | [![Pull requests](https://img.shields.io/github/issues-pr-closed/RUCAIBox/RecBole-CDR?style=social&logo=githubactions)](https://github.com/RUCAIBox/RecBole-CDR/pulls) |
-| [**RecBole-GNN**](https://github.com/RUCAIBox/RecBole-GNN)   | [![Stars](https://img.shields.io/github/stars/RUCAIBox/RecBole-GNN?style=social&logo=ReverbNation&logoColor=yellow)](https://github.com/RUCAIBox/RecBole-GNN/stargazers) | [![Forks](https://img.shields.io/github/forks/RUCAIBox/RecBole-GNN?style=social&logo=github)](https://github.com/RUCAIBox/RecBole-GNN/network/members) | [![Issues](https://img.shields.io/github/issues-closed/RUCAIBox/RecBole-GNN?style=social&logo=git)](https://github.com/RUCAIBox/RecBole-GNN/issues) | [![Pull requests](https://img.shields.io/github/issues-pr-closed/RUCAIBox/RecBole-GNN?style=social&logo=githubactions)](https://github.com/RUCAIBox/RecBole-GNN/pulls) |
-| [**RecBole-TRM**](https://github.com/RUCAIBox/RecBole-TRM)   | [![Stars](https://img.shields.io/github/stars/RUCAIBOX/RecBole-TRM?style=social&logo=ReverbNation&logoColor=yellow)](https://github.com/RUCAIBOX/RecBole-TRM/stargazers) | [![Forks](https://img.shields.io/github/forks/RUCAIBox/RecBole-TRM?style=social&logo=github)](https://github.com/RUCAIBox/RecBole-TRM/network/members) | [![Issues](https://img.shields.io/github/issues-closed/RUCAIBox/RecBole-TRM?style=social&logo=git)](https://github.com/RUCAIBox/RecBole-TRM/issues) | [![Pull requests](https://img.shields.io/github/issues-pr-closed/RUCAIBox/RecBole-TRM?style=social&logo=githubactions)](https://github.com/RUCAIBox/RecBole-TRM/pulls) |
-| [**RecBole-PJF**](https://github.com/RUCAIBox/RecBole-PJF)   | [![Stars](https://img.shields.io/github/stars/RUCAIBox/RecBole-PJF?style=social&logo=ReverbNation&logoColor=yellow)](https://github.com/RUCAIBox/RecBole-PJF/stargazers) | [![Forks](https://img.shields.io/github/forks/RUCAIBox/RecBole-PJF?style=social&logo=github)](https://github.com/RUCAIBox/RecBole-PJF/network/members) | [![Issues](https://img.shields.io/github/issues-closed/RUCAIBox/RecBole-PJF?style=social&logo=git)](https://github.com/RUCAIBox/RecBole-PJF/issues) | [![Pull requests](https://img.shields.io/github/issues-pr-closed/RUCAIBox/RecBole-PJF?style=social&logo=githubactions)](https://github.com/RUCAIBox/RecBole-PJF/pulls) |
-| [**RecSysDatasets**](https://github.com/RUCAIBox/RecSysDatasets) | [![Stars](https://img.shields.io/github/stars/RUCAIBox/RecSysDatasets?style=social&logo=ReverbNation&logoColor=yellow)](https://github.com/RUCAIBox/RecSysDatasets/stargazers) | [![Forks](https://img.shields.io/github/forks/RUCAIBox/RecSysDatasets?style=social&logo=github)](https://github.com/RUCAIBox/RecSysDatasets/network/members) | [![Issues](https://img.shields.io/github/issues-closed/RUCAIBox/RecSysDatasets?style=social&logo=git)](https://github.com/RUCAIBox/RecSysDatasets/issues) | [![Pull requests](https://img.shields.io/github/issues-pr-closed/RUCAIBox/RecSysDatasets?style=social&logo=githubactions)](https://github.com/RUCAIBox/RecSysDatasets/pulls) |
-
-
-## Contributing
-
-Please let us know if you encounter a bug or have any suggestions by [filing an issue](https://github.com/RUCAIBox/RecBole/issues).
-
-We welcome all contributions from bug fixes to new features and extensions.
-
-We expect all contributions discussed in the issue tracker and going through PRs.
-
-We thank the insightful suggestions from [@tszumowski](https://github.com/tszumowski), [@rowedenny](https://github.com/rowedenny), [@deklanw](https://github.com/deklanw) et.al.
-
-We thank the nice contributions through PRs from [@rowedenny](https://github.com/rowedenny)，[@deklanw](https://github.com/deklanw) et.al.
-
-
-## Cite
-If you find RecBole useful for your research or development, please cite the following papers: [RecBole[1.0]](https://arxiv.org/abs/2011.01731), [RecBole[2.0]](https://dl.acm.org/doi/abs/10.1145/3459637.3482016) and [RecBole[1.2.1]](https://dl.acm.org/doi/10.1145/3539618.3591889).
-
-```bibtex
-@inproceedings{recbole[1.0],
-  author    = {Wayne Xin Zhao and Shanlei Mu and Yupeng Hou and Zihan Lin and Yushuo Chen and Xingyu Pan and Kaiyuan Li and Yujie Lu and Hui Wang and Changxin Tian and Yingqian Min and Zhichao Feng and Xinyan Fan and Xu Chen and Pengfei Wang and Wendi Ji and Yaliang Li and Xiaoling Wang and Ji{-}Rong Wen},
-  title     = {RecBole: Towards a Unified, Comprehensive and Efficient Framework for Recommendation Algorithms},
-  booktitle = {{CIKM}},
-  pages     = {4653--4664},
-  publisher = {{ACM}},
-  year      = {2021}
-}
-@inproceedings{recbole[2.0],
-  author    = {Wayne Xin Zhao and Yupeng Hou and Xingyu Pan and Chen Yang and Zeyu Zhang and Zihan Lin and Jingsen Zhang and Shuqing Bian and Jiakai Tang and Wenqi Sun and Yushuo Chen and Lanling Xu and Gaowei Zhang and Zhen Tian and Changxin Tian and Shanlei Mu and Xinyan Fan and Xu Chen and Ji{-}Rong Wen},
-  title     = {RecBole 2.0: Towards a More Up-to-Date Recommendation Library},
-  booktitle = {{CIKM}},
-  pages     = {4722--4726},
-  publisher = {{ACM}},
-  year      = {2022}
-}
-@inproceedings{recbole[1.2.1],
-  author    = {Lanling Xu and Zhen Tian and Gaowei Zhang and Junjie Zhang and Lei Wang and Bowen Zheng and Yifan Li and Jiakai Tang and Zeyu Zhang and Yupeng Hou and Xingyu Pan and Wayne Xin Zhao and Xu Chen and Ji{-}Rong Wen},
-  title     = {Towards a More User-Friendly and Easy-to-Use Benchmark Library for Recommender Systems},
-  booktitle = {{SIGIR}},
-  pages     = {2837--2847},
-  publisher = {{ACM}},
-  year      = {2023}
-}
+```bash
+python run_recbole.py \
+  --model PADAFRec \
+  --dataset Beauty_and_Personal_Care_PADAF \
+  --config_files /path/to/PADAFRec_Beauty_and_Personal_Care_PADAF.yaml
 ```
 
+### 4.4 IRIS 실행 예시
 
-## The Team
+```yaml
+selected_features: [category, brand, text, image]
+structured_features: [category, brand]
+dense_features: [text, image]
+dense_feature_paths:
+  text: /content/padaf_workspace/dataset/Beauty_and_Personal_Care_PADAF/padaf/text_features.npy
+  image: /content/padaf_workspace/dataset/Beauty_and_Personal_Care_PADAF/padaf/image_features.npy
+attribute_hidden_size: [64, 64, 64, 64]
+fusion_type: sum
+combine_type: mean
+```
 
-RecBole is developed by [RUC, BUPT, ECNU](https://www.recbole.io/about.html), and maintained by RUC.
+실행:
 
-Here is the list of our lead developers in each development phase. They are the souls of RecBole and have made outstanding contributions.
+```bash
+python run_recbole.py \
+  --model IRIS \
+  --dataset Beauty_and_Personal_Care_PADAF \
+  --config_files /path/to/IRIS_Beauty_and_Personal_Care_PADAF.yaml
+```
 
-|         Time          |        Version         |                Lead Developers                 |                Paper            |
-| :-------------------: | :--------------------: | :--------------------------------------------: | ---------------------------------------------- |
-| June 2020<br> ~<br> Nov. 2020 |        v0.1.1         |  Shanlei Mu ([@ShanleiMu](https://github.com/ShanleiMu)), Yupeng Hou ([@hyp1231](https://github.com/hyp1231)),<br> Zihan Lin ([@linzihan-backforward](https://github.com/linzihan-backforward)), Kaiyuan Li ([@tsotfsk](https://github.com/tsotfsk))| [PDF](https://dl.acm.org/doi/abs/10.1145/3459637.3482016) |
-|    Nov. 2020<br> ~ <br> Jul. 2022    | v0.1.2 ~ v1.0.1 |      Yushuo Chen ([@chenyushuo](https://github.com/chenyushuo)), Xingyu Pan ([@2017pxy](https://github.com/2017pxy))    | [PDF](https://dl.acm.org/doi/abs/10.1145/3459637.3482016)  |
-| Jul. 2022<br/> ~ <br/> Nov. 2023 | v1.1.0 ~ v1.1.1 | Lanling Xu ([@Sherry-XLL](https://github.com/Sherry-XLL)), Zhen Tian ([@chenyuwuxin](https://github.com/chenyuwuxin)), Gaowei Zhang ([@Wicknight](https://github.com/Wicknight)), Lei Wang ([@Paitesanshi](https://github.com/Paitesanshi)), Junjie Zhang ([@leoleojie](https://github.com/leoleojie)) | [PDF](https://dl.acm.org/doi/10.1145/3539618.3591889) |
-| Nov. 2023<br/> ~ <br/> Feb. 2025 | v1.2.0 | Bowen Zheng ([@zhengbw0324](https://github.com/zhengbw0324)), Chen Ma ([@Yilu114](https://github.com/Yilu114)) | [PDF](https://dl.acm.org/doi/10.1145/3539618.3591889) |
-| Feb. 2025<br/> ~ <br/> now | v1.2.1 | Enze Liu ([@BishopLiu](https://github.com/BishopLiu)), Kesha Ou ([@TayTroye](https://github.com/TayTroye)), Bingqian Li ([@Fotiligner](https://github.com/Fotiligner)) | [PDF](https://dl.acm.org/doi/10.1145/3539618.3591889) |
+### 4.5 DIF-SR / SASRecD 실행 예시
 
+이 저장소에서는 RecBole 내부 모델명을 `SASRecD`로 사용합니다. 실험표나 논문에서는 DIF-SR 비교군으로 표기할 수 있습니다.
 
-## License
-RecBole uses [MIT License](./LICENSE). All data and code in this project can only be used for academic purposes.
+#### canonical: category only
 
-## Acknowledgments
+```yaml
+selected_features: [category]
+structured_features: [category]
+dense_features: []
+attribute_hidden_size: [64]
+fusion_type: gate
+attribute_predictor: linear
+auxiliary_features: [category]
+lamdas: [10]
+```
 
-This project was supported by National Natural Science Foundation of China (No. 61832017).
+#### structured: category + brand
+
+```yaml
+selected_features: [category, brand]
+structured_features: [category, brand]
+dense_features: []
+attribute_hidden_size: [64, 64]
+fusion_type: gate
+attribute_predictor: linear
+auxiliary_features: [category, brand]
+lamdas: [10, 10]
+```
+
+#### full: category + brand + text + image
+
+```yaml
+selected_features: [category, brand, text, image]
+structured_features: [category, brand]
+dense_features: [text, image]
+dense_feature_paths:
+  text: /content/padaf_workspace/dataset/Beauty_and_Personal_Care_PADAF/padaf/text_features.npy
+  image: /content/padaf_workspace/dataset/Beauty_and_Personal_Care_PADAF/padaf/image_features.npy
+attribute_hidden_size: [64, 64, 64, 64]
+fusion_type: gate
+attribute_predictor: linear
+auxiliary_features: [category, brand]
+lamdas: [10, 10]
+```
+
+실행:
+
+```bash
+python run_recbole.py \
+  --model SASRecD \
+  --dataset Beauty_and_Personal_Care_PADAF \
+  --config_files /path/to/SASRecD_Beauty_and_Personal_Care_PADAF_full.yaml
+```
+
+### 4.6 SASRecFDense 실행 예시
+
+`SASRecFDense`는 `item embedding`, `category`, `brand`, `text`, `image`를 Transformer 입력 전에 concat한 뒤 linear projection합니다.
+
+```yaml
+selected_features: [category, brand, text, image]
+structured_features: [category, brand]
+dense_features: [text, image]
+dense_feature_paths:
+  text: /content/padaf_workspace/dataset/Beauty_and_Personal_Care_PADAF/padaf/text_features.npy
+  image: /content/padaf_workspace/dataset/Beauty_and_Personal_Care_PADAF/padaf/image_features.npy
+```
+
+실행:
+
+```bash
+python run_recbole.py \
+  --model SASRecFDense \
+  --dataset Beauty_and_Personal_Care_PADAF \
+  --config_files /path/to/SASRecFDense_Beauty_and_Personal_Care_PADAF.yaml
+```
+
+### 4.7 GMUSASRecFDense 실행 예시
+
+`GMUSASRecFDense`는 `item embedding`, `category`, `brand`, `text`, `image` branch를 GMU 방식으로 가중합한 뒤 SASRec Transformer에 입력합니다.
+
+```yaml
+selected_features: [category, brand, text, image]
+structured_features: [category, brand]
+dense_features: [text, image]
+dense_feature_paths:
+  text: /content/padaf_workspace/dataset/Beauty_and_Personal_Care_PADAF/padaf/text_features.npy
+  image: /content/padaf_workspace/dataset/Beauty_and_Personal_Care_PADAF/padaf/image_features.npy
+```
+
+실행:
+
+```bash
+python run_recbole.py \
+  --model GMUSASRecFDense \
+  --dataset Beauty_and_Personal_Care_PADAF \
+  --config_files /path/to/GMUSASRecFDense_Beauty_and_Personal_Care_PADAF.yaml
+```
+
+---
+
+## 5. Colab 사용 흐름
+
+BDP 작업 루트의 `colab_trainer.ipynb`는 다음 작업을 자동화하기 위해 작성했습니다.
+
+1. Google Drive에 저장된 전처리 산출물 복원
+2. `kimstitute/PADAFMSRec` 클론 또는 업데이트
+3. 선택한 모델에 맞는 RecBole config 생성
+4. 학습 실행
+5. stdout log, RecBole log, config, manifest, checkpoint를 실험 폴더로 저장
+
+주요 설정값:
+
+```python
+DATASET = "Beauty_and_Personal_Care"
+MODEL = "PADAFRec"  # PADAFRec / SASRec / IRIS / SASRecD / DIF-SR / SASRecFDense / GMUSASRecFDense
+DIFSR_VARIANT = "full"  # SASRecD 전용: canonical / structured / full
+DRIVE_ROOT = "/content/drive/MyDrive/BDP/Datasets3"
+EXPERIMENT_ROOT = "/content/drive/MyDrive/BDP/Experiments"
+SMOKE_RUN = False
+```
+
+일반 SASRec을 돌릴 때는 다음처럼 설정하면 됩니다.
+
+```python
+MODEL = "SASRec"
+```
+
+이 경우 dense cache 파일은 필요하지 않습니다.
+
+---
+
+## 6. 실험 비교 시 주의사항
+
+### 6.1 모달리티 동일성과 objective 동일성은 별개
+
+`PADAFRec`, `SASRecD`는 auxiliary objective를 사용할 수 있습니다. 반면 `IRIS`, `SASRecFDense`, `GMUSASRecFDense`, `SASRec`는 기본적으로 auxiliary objective 없이 next-item prediction만 수행합니다.
+
+따라서 결과를 해석할 때 다음을 분리해서 보고해야 합니다.
+
+- 사용 모달리티: `ID`, `category`, `brand`, `text`, `image`
+- fusion 위치: attention 이전 / attention score level / attention 이후
+- auxiliary loss 사용 여부
+- dense cache encoder: text는 BERT, image는 ResNet 등
+
+### 6.2 dense cache row order 검증
+
+모델은 dense matrix row 수가 RecBole item 수와 일치하는지 검사합니다. 하지만 row `i`가 정확히 RecBole remapped item id `i`에 해당하는지는 전처리 단계에서 보장해야 합니다.
+
+권장 확인:
+
+- `.item`의 `item_id:token` 순서
+- `i_id_mapping.csv`
+- `text_features.npy`, `image_features.npy` row 수
+- row 0 padding 여부
+
+### 6.3 동일 데이터 분할 유지
+
+공정 비교를 위해 모든 모델에서 다음 설정을 동일하게 유지하는 것을 권장합니다.
+
+```yaml
+eval_args:
+  split:
+    LS: valid_and_test
+  order: TO
+  group_by: user
+  mode: full
+MAX_ITEM_LIST_LENGTH: 50
+loss_type: CE
+metrics: [Recall, MRR, NDCG, Hit, Precision]
+topk: [5, 10, 20]
+valid_metric: NDCG@10
+seed: 42
+reproducibility: true
+```
+
+---
+
+## 7. 테스트
+
+로컬에서 주요 추가 모델 테스트를 실행하려면:
+
+```bash
+PYTHONPATH=. pytest \
+  tests/model/test_padaf_layers.py \
+  tests/model/test_padafrec_registration.py \
+  tests/model/test_iris_layers.py \
+  tests/model/test_iris_registration.py \
+  tests/model/test_difsr_layers.py \
+  tests/model/test_sasrecd_registration.py \
+  tests/model/test_sasrecfdense_registration.py \
+  tests/model/test_gmusasrecfdense_registration.py \
+  -q
+```
+
+최근 검증 결과:
+
+```text
+49 passed
+```
+
+---
+
+## 8. 원본 RecBole 인용
+
+본 저장소는 RecBole 1.2.1을 기반으로 합니다. RecBole을 사용하는 연구에서는 원본 프로젝트의 라이선스와 인용 정보를 함께 확인해야 합니다.
+
+- RecBole GitHub: https://github.com/RUCAIBox/RecBole
+- RecBole paper: https://arxiv.org/abs/2011.01731
