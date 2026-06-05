@@ -24,6 +24,7 @@ from recbole.model.sequential_recommender.sasrec import SASRec
 from recbole.model.sequential_recommender.sasreccpr import SASRecCPR
 from recbole.model.sequential_recommender.sasrecf import SASRecF
 from recbole.model.sequential_recommender.padafrec import PADAFRec
+from recbole.model.sequential_recommender.iris import IRIS
 from recbole.model.sequential_recommender.shan import SHAN
 from recbole.model.sequential_recommender.sine import SINE
 from recbole.model.sequential_recommender.srgnn import SRGNN
