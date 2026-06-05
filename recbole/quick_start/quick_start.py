@@ -252,7 +252,10 @@ def load_data_and_model(model_file):
     """
     import torch
 
-    checkpoint = torch.load(model_file)
+    try:
+        checkpoint = torch.load(model_file, weights_only=False)
+    except TypeError:
+        checkpoint = torch.load(model_file)
     config = checkpoint["config"]
     init_seed(config["seed"], config["reproducibility"])
     init_logger(config)
